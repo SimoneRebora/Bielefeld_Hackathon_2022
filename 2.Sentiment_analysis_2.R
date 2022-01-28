@@ -39,6 +39,7 @@ install.packages("tidytext")
 install.packages("syuzhet")
 install.packages("sjPlot")
 install.packages("wordcloud")
+install.packages("textdata")
 
 # Once you have installed the packeges you can comment the installation code like this:
 
@@ -55,7 +56,7 @@ library(tm)
 library(tidytext)
 library(sjPlot)
 library(wordcloud)
-
+library(textdata)
 
 
 
@@ -79,37 +80,39 @@ fs = 12 # default plot font size
 
 # It is important to be consistent! It can make your life much easier when you deal with many texts.
 
-# now, we need to instruct R to look into the directory where we have stored our txt files.
-
-# you can do so by copying and pasting the directory path to your corpus, or use the navigation panel to get inside the folder where the txt files are, then click on the little arrow near the "More" icon, and select "Set As Working Directory".
-
-setwd("corpus")
-
 # this tells R to look only for txt files in the working directory. (that's why we had to change it. we will set it back to the previous WD later)
 
-austen_files <- list.files(pattern = ".*.txt")
+novels_files <- list.files(path = "corpus", pattern = "*.txt", full.names = T)
 
 
 
 # with the next chunk we make sure we keep the filename and use it as a variable, which then can be useful for preserving information we stored in the filename
 
-austen_source <- austen_files %>%  
+novels_source <- novels_files %>%  
   set_names(.) %>% 
-  map_df(read.delim, fileEncoding = "utf-8", .id = "FileName")
+  map_df(read_file) %>%
+  pivot_longer(cols = everything()) %>%
+  rename(FileName = 1,
+         text = 2)
 
-
+    
 # as mentioned above, we can then split the filename into the relevant "pieces" of information we want.
 # we tell R to split the filename into author, title and year, looking at "_" symbols as separator. we can achieve that with the "separate" function.
 # because the file extension is not separated from the rest of the filename with a "_" symbol, we need to tell R to remove the ".txt" part, and we can do so with "str_remove". We also make sure there are no white spaces on wither side of the year with "str_trim"
 
-austen_corpus <- austen_source %>%
+novels_corpus <- novels_source %>%
+  mutate(FileName = str_remove_all(FileName, "corpus/")) %>%
   separate(FileName, into = c("author", "title", "year"), sep = "_", remove = T) %>%
-  mutate(year = str_remove(str_trim(year, side = "both"), ".txt")) 
+  mutate(year = str_remove(str_trim(year, side = "both"), ".txt"))
 
+
+# we can remove the list of filenames and the source dataframe
+
+remove(novels_source, novels_files)
 
 # and we can now add an id per sentence and then tokenize
 
-austen_corpus <- austen_corpus %>%
+novels_corpus <- novels_corpus %>%
   group_by(title) %>%
   mutate(sentence_id = seq_along(text)) %>%
   ungroup() %>%
@@ -122,7 +125,7 @@ austen_corpus <- austen_corpus %>%
 
 # we can also create a word identification number per title per sentence, and a unique word id
 
-austen_corpus <- austen_corpus %>%
+novels_corpus <- novels_corpus %>%
   group_by(title, sentence_id) %>%
   mutate(word_id = seq_along(word)) %>%
   ungroup() %>%
@@ -132,7 +135,7 @@ austen_corpus <- austen_corpus %>%
 
 # let's have a look at out dataset now
 
-head(austen_corpus)
+head(novels_corpus)
 
 
 
@@ -140,7 +143,7 @@ head(austen_corpus)
 
 # for the sake of simplicity, let's split the novels into 15 chapters each.
 
-test <- austen_corpus %>%
+test <- novels_corpus %>%
   ungroup() %>%
   group_split(title)
 
@@ -165,7 +168,7 @@ for (i in 1:length(test2)) {
   test[[i]] <- data.table::rbindlist(test2[[i]])
 }
 
-austen_corpus <- data.table(rbindlist(test))
+novels_corpus <- data.table(rbindlist(test))
 
 
 remove(test, test2, j,i,r,avg_ch_lenght)
@@ -174,7 +177,7 @@ remove(test, test2, j,i,r,avg_ch_lenght)
 
 # let's have a look again
 
-head(austen_corpus)
+head(novels_corpus)
 
 
 
@@ -183,7 +186,7 @@ head(austen_corpus)
 
 # now we can have a first look at our corpus and see which words are most frequent in the novels
 
-austen_corpus %>%
+novels_corpus %>%
   group_by(title, word) %>%
   anti_join(stop_words, by = "word") %>% # delete stopwords
   count() %>% # summarize count per word per title
@@ -210,7 +213,6 @@ austen_corpus %>%
 
 # relatively unsurprisingly, names of characters are generally the most frequent words. To see what other words are highly frequent, we can for example import a list of first and last names, so that we can exclude them from the plot.
 
-setwd("C:/Users/grig/Dropbox/IGEL Training School 2021 on Sentiment Analysis/Beginners/practice_GG")
 
 first_names <- read_table("first_names.txt") 
 first_names$word = tolower(first_names$word)
@@ -221,7 +223,7 @@ last_names$word = tolower(last_names$word)
 
 # let's see then how it looks without those
 
-austen_corpus %>%
+novels_corpus %>%
   anti_join(first_names) %>%
   anti_join(last_names) %>%
   group_by(title, word) %>%
@@ -265,9 +267,9 @@ austen_corpus %>%
 # in this example, we will use three popular lexicons, namely the AFINN, NRC and BING. For the sake of simplicity, we will simply use the versions provided by the syuzhet package.
 # we can therefore match these onto our corpus directly with the function called get_sentiments, which is included in the syuzhet package. Rather than loading the sentiment lexicons, it applies it directly to the corpus.
 
-austen_SA <- bind_rows(
+novels_SA <- bind_rows(
   # 1 AFINN 
-  austen_corpus %>% 
+  novels_corpus %>% 
     inner_join(get_sentiments("afinn"), by = "word")  %>%
     # filter(value != 0) %>% # delete neutral words
     mutate(sentiment = ifelse(value < 0, 'negative', 'positive')) %>% # identify sentiment
@@ -276,13 +278,13 @@ austen_SA <- bind_rows(
     mutate(dictionary = 'afinn'), # create dictionary identifier
   
   # 2 BING 
-  austen_corpus %>% 
+  novels_corpus %>% 
     inner_join(get_sentiments("bing"), by = "word") %>%
     group_by(title, sentiment) %>%
     mutate(dictionary = 'bing'), # create dictionary identifier
   
   # 3 NRC 
-  austen_corpus %>% 
+  novels_corpus %>% 
     inner_join(get_sentiments("nrc"), by = "word") %>%
     group_by(title, sentiment) %>%
     mutate(dictionary = 'nrc'),
@@ -296,7 +298,7 @@ austen_SA <- bind_rows(
 
 ## let's have a look at our corpus
 
-austen_SA %>% head()
+novels_SA %>% head()
 
 
 
@@ -306,7 +308,7 @@ austen_SA %>% head()
 
 # positive sentiments
 
-austen_SA %>%
+novels_SA %>%
   anti_join(stop_words, by = "word") %>% # delete stopwords
   filter(sentiment=="positive") %>% # here is where we can select what to look at
   group_by(word) %>%
@@ -321,7 +323,7 @@ austen_SA %>%
 
 # negative sentiments
 
-austen_SA %>%
+novels_SA %>%
   anti_join(stop_words, by = "word") %>% # delete stopwords
   filter(sentiment=="negative") %>% # here is where we can select what to look at
   group_by(word) %>%
@@ -335,10 +337,11 @@ austen_SA %>%
   ))
 
 
-# it looks pretty correct, right? a lot of "happyness" for positive sentments and quite some danger and evil for negative ones. you might have noticed that "miss" is by far the biggest (and therefore more frequent) term in the "negative cloud. With some sense, we can probably understand that there is a chance this is a "mistake": "to miss" as a verb might be negative, but it is possible that "miss" would not really be a negative term in Austen's novels when referring to a young woman.
+# it looks pretty correct, right? a lot of "love" for positive sentiments and quite some doubt and death for negative ones
+# You might have noticed that "miss" is by far the biggest (and therefore more frequent) term in the "negative cloud. With some sense, we can probably understand that there is a chance this is a "mistake": "to miss" as a verb might be negative, but it is possible that "miss" would not really be a negative term in Austen's novels when referring to a young woman.
 # we can see how the graph looks like without it.
 
-austen_SA %>%
+novels_SA %>%
   anti_join(stop_words, by = "word") %>% # delete stopwords
   filter(word != "miss") %>%
   filter(sentiment=="negative") %>% # here is where we can select what to look at
@@ -362,7 +365,7 @@ austen_SA %>%
 # we might want to see if the different lexicons perform differntly.
 # the three elxicons share the negative/positive value, so let's focus on that
 
-austen_SA %>%
+novels_SA %>%
   filter(sentiment == "negative" | sentiment == "positive") %>%
   group_by(word, sentiment, dictionary) %>%
   count() %>% # summarize count per word per sentiment
@@ -382,7 +385,7 @@ austen_SA %>%
         axis.ticks.y = element_blank(), # remove y ticks
         axis.text.y = element_blank()) + # remove y text
   labs(y = "Word count", x = "", # add manual labels
-       title = "Jane Austen novels: Frequency of words carrying sentiment",
+       title = "Frequency of words carrying sentiment",
        subtitle = "Using tidytext and the AFINN, bing, and nrc sentiment dictionaries") +
   facet_grid(sentiment ~ dictionary) + # separate plot for each sentiment
   coord_flip()  + # flip axes
@@ -391,7 +394,7 @@ austen_SA %>%
 
 ## NER also has discrete emotions, we might want to focus on them separately
 
-austen_SA %>%
+novels_SA %>%
   filter(dictionary == "nrc") %>%
   filter(!sentiment %in% c('negative','positive')) %>%
   group_by(word, sentiment, dictionary) %>%
@@ -412,7 +415,7 @@ austen_SA %>%
         axis.ticks.y = element_blank(), # remove y ticks
         axis.text.y = element_blank()) + # remove y text
   labs(y = "Word count", x = "", # add manual labels
-       title = "Jane Austen novels: Frequency of words carrying sentiment",
+       title = "Frequency of words carrying sentiment",
        subtitle = "nrc sentiment dictionary") +
   facet_grid(. ~ sentiment) + # separate plot for each sentiment
   coord_flip()  + # flip axes
@@ -431,7 +434,7 @@ austen_SA %>%
 # we can do so with some graphs:
 
 
-plot_sentiments <- austen_SA %>%
+plot_sentiments <- novels_SA %>%
   group_by(dictionary, sentiment, title, chapter) %>%
   summarize(value = sum(value), # summarize AFINN values
             count = n(), # summarize bing and nrc counts
@@ -447,7 +450,7 @@ plot_sentiments <- austen_SA %>%
   theme(legend.position = 'none', # remove legend
         text = element_text(size = fs)) + # change font size
   labs(x = "Chapter", y = "Sentiment value", # add labels
-       title = "Jane Austen: Sentiment across novels chapters",
+       title = "Sentiment across novels chapters",
        subtitle = "Using tidytext and the AFINN, bing, and nrc sentiment dictionaries") +
   # separate plot per title and dictionary and free up x-axes
   facet_grid(title ~ dictionary, scale = "free_x") +
@@ -465,7 +468,7 @@ plot_sentiments + coord_cartesian(ylim = c(-100,200))
 ## nrc emotions across novels ----------------------------
 
 
-austen_SA %>% 
+novels_SA %>% 
   filter(dictionary == "nrc") %>%
   filter(!sentiment %in% c('negative','positive')) %>%
   group_by(sentiment, title, chapter) %>%
