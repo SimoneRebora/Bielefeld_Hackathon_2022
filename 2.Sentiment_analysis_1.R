@@ -12,7 +12,7 @@
 # If you are unfamiliar with R language and basic operations and want to learn more about it, there is plenty of tutorials online. Have a look at the resources at the end of this script for a few recommendations.
 
 # before you start, check the working directory!
-# you can click on the Files panel, go to the practice_GG folder, and once you are inside click on the little arrow near the "More" button, and select "Set as working directory"
+# you can click on the Files panel, go to the Bielefeld_Hackaton_2022 folder, and once you are inside click on the little arrow near the "More" button, and select "Set as working directory"
 
 
 # now we're ready to start!
@@ -85,11 +85,6 @@ pride <- read.delim("samples/austen_pride_1813.txt", # this is the url to your f
                     header = F) %>% # we do not want the first line as a header 
   rename(text = V1) # we can name the column text
 
-akshya <- read.delim("samples/austen_pride_1813.txt", # this is the url to your file
-                    fileEncoding = "utf-8",  # we want to read it as unicode text
-                    header = F) %>% # we do not want the first line as a header 
-  rename(text = V1) # we can name the column text
-
 # your file has been imported! 
 # Have a look at the first rows to see how it looks
 # execute the next code cunk or click on the "pride" element in your environment
@@ -99,18 +94,18 @@ head(pride)
 
 
 
-# when importing a txt file, the paragraphs are automatically converted into new rows. if you want to have a single string instead, you can transform it, telling R to combine the rows, and to add "\n " (a conventional code for a new line) between one piece of string and the next, as folows:
+# when importing a txt file, the paragraphs are automatically converted into new rows. if you want to have a single string instead, you can transform it, telling R to combine the rows, and to add "\n " (a conventional code for a new line) between one piece of string and the next, as follows:
 
 pride_whole <- paste(unlist(pride), collapse ="\n")
 
-head(as.tibble(pride_whole))
+head(as_tibble(pride_whole))
 
 
 # you can then split it into sentences, for instance with packages syuzhet (the result will be a list of strings)
 
 pride_sentences <- get_sentences(pride_whole)
 
-head(as.tibble(pride_sentences))
+head(as_tibble(pride_sentences))
 
 # or with the package tidytext (this will turn into a dataframe)
 
@@ -126,13 +121,9 @@ head(pride_sentences)
 # you can then proceed as follows:
 # (this is just one way but there are many out there)
 
-# - set the workign directory to the subfolder where the text files are
-
-setwd("samples")
-
 # - create a silt of the files inside the folder that match the criteria (txt)
 
-corpus_files <- list.files(pattern = ".*.txt")
+corpus_files <- list.files(path = "samples", pattern = "*.txt", full.names = T)
 
 
 corpus_source <- corpus_files %>%  
@@ -145,11 +136,20 @@ corpus_source <- corpus_files %>%
 
 head(corpus_source)
 
+
+# let's see which files are in our corpus:
+
+corpus_source %>% 
+  select(FileName) %>%
+  distinct()
+
+
 # now, as we mentioned you might want to use the information in the filename to create more variables (that's how "columns" are called in R) in our corpus
 
 corpus <- corpus_source %>%
-  separate(FileName, into = c("author", "title", "year"), sep = "_", remove = T) %>%
-  mutate(year = str_remove(str_trim(year, side = "both"), ".txt")) 
+  mutate(FileName = str_remove_all(FileName, "samples/")) %>% # let's remove the directory from the filename
+  separate(FileName, into = c("author", "title", "year"), sep = "_", remove = T) %>% # and separate the metadata
+  mutate(year = str_remove(str_trim(year, side = "both"), ".txt")) # and make sure there are no extra spaces before/after the words
 
 # click on corpus and see how it looks. Neat, right?
 
@@ -159,6 +159,7 @@ corpus <- corpus %>%
   group_by(title) %>%
   mutate(sentence_id = seq_along(text)) %>%
   ungroup()
+
 
 
 ## csv and xslx ----
@@ -180,9 +181,7 @@ head(pride_excel)
 
 # the procedure similar to the one we saw for the txt files, except it has read_excel as function, and it does not need to add a header or other variables
 
-setwd("samples")
-
-corpus_files <- list.files(pattern = ".*.xlsx")
+corpus_files <- list.files(path = "samples", pattern = "*.xlsx",  full.names = T)
 
 
 corpus_source <- corpus_files %>%  
@@ -202,7 +201,7 @@ library(epubr)
 
 kafka_all <- epubr::epub("samples/kafka.epub")
 
-# have a look a the dataset "kafka_all": epubs often have a more complex internal stucture, and you might need to modify your dataset accorpding to your needs
+# have a look a the dataset "kafka_all": epubs often have a more complex internal structure, and you might need to modify your dataset according to your needs
 
 kafka_werke <- kafka_all[[9]][[1]]
 
@@ -219,14 +218,14 @@ syuzhet_nrc <- get_sentiment_dictionary("nrc")
 
 
 
-# Dictionaries within packages, howerver, could be updated or change over time (or become unavailable). 
+# Dictionaries within packages, however, could be updated or change over time (or become unavailable). 
 # You can then decide that you prefer to store them locally, so that you can be sure they do not change and that you will be able to access them whether you are online or not.
 
 # for example, if you go to the official source of the NRC lexicon developed by Saif Mohammad, https://saifmohammad.com/WebPages/NRC-Emotion-Lexicon.htm , you will be able to download the lexicon in several formats.
 
 # A reduced version (only english) of that file has been downloaded for you in the "lexicon" folder. Import it and have a look at it.
 
-NRC_2017_english <- read_excel("C:/Users/grig/Dropbox/IGEL Training School 2021 on Sentiment Analysis/Beginners/practice_GG/lexicons/NRC_2017_english.xlsx")
+NRC_2017_english <- read_excel("lexicons/NRC_2017_english.xlsx")
 
 # you can already see that the two nrc lexicons have differences, so be careful when you pick one and make an informed decision.
 
