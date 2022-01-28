@@ -126,6 +126,42 @@ png(filename = "heatmap.png", width = 4000, height = 4000)
 heatmap(doc.topics, margins = c(25,25), cexRow = 2, cexCol = 2)
 dev.off()
 
+# 3.1 (additional step) compress the heatmap by averaging topic values per text
+library(tidyverse)
+library(reshape2)
+
+# first, we need to convert the matrix into a "tidy" dataframe
+doc.topics <- as.data.frame(doc.topics)
+doc.topics$chapter <- rownames(doc.topics)
+doc.topics.m <- melt(doc.topics, id.vars = "chapter")
+View(doc.topics.m)
+
+# then we have to extract the titles
+chapters_tmp <- strsplit(doc.topics$chapter, "_")
+doc.topics.m$title <- sapply(chapters_tmp, function(x) paste(x[1:3], collapse = "_"))
+doc.topics.m$title
+
+# so we can use tidyverse functions to calculate the mean topic value
+doc.topics <- doc.topics.m %>%
+  group_by(title, variable) %>%
+  summarise(gamma = mean(value))
+
+# then we have to re-convert the tidy table into a matrix for visualization
+doc.topics <- dcast(data = doc.topics,
+                           formula = title~variable,
+                           fun.aggregate = sum,
+                           value.var = "gamma")
+
+my_rownames <- doc.topics$title
+doc.topics$title <- NULL
+doc.topics <- as.matrix(doc.topics)
+rownames(doc.topics) <- my_rownames
+
+# visualize/save the heatmap!
+png(filename = "heatmap_2.png", width = 1000, height = 1000)
+heatmap(doc.topics, margins = c(25,25), cexRow = 2, cexCol = 2)
+dev.off()
+
 # 4. Wordcloud visualization
 # using a specific ggplot library
 library(ggwordcloud)
