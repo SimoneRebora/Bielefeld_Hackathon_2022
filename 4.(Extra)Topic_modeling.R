@@ -2,6 +2,7 @@
 
 install.packages("mallet")
 install.packages("ggwordcloud")
+install.packages("reshape2")
 
 # 1. Prepare the dataset
 
@@ -139,7 +140,7 @@ View(doc.topics.m)
 # then we have to extract the titles
 chapters_tmp <- strsplit(doc.topics$chapter, "_")
 doc.topics.m$title <- sapply(chapters_tmp, function(x) paste(x[1:3], collapse = "_"))
-doc.topics.m$title
+View(doc.topics.m)
 
 # so we can use tidyverse functions to calculate the mean topic value
 doc.topics <- doc.topics.m %>%
