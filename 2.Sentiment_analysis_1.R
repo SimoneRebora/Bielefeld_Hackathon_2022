@@ -77,7 +77,7 @@ library(wordcloud)
 
 # let's try it out. As you can see in the files panels, there is a folder called "samples", where some texts in different formats are stored.
 
-# before you execute the code, make sure the working directory is set to practice_GG
+# before you execute the code, make sure the working directory is set to 
 
 
 pride <- read.delim("samples/austen_pride_1813.txt", # this is the url to your file
@@ -100,6 +100,7 @@ pride_whole <- paste(unlist(pride), collapse ="\n")
 
 head(as_tibble(pride_whole))
 
+pride_whole_tibble <- as_tibble(pride_whole)
 
 # you can then split it into sentences, for instance with packages syuzhet (the result will be a list of strings)
 
@@ -111,7 +112,8 @@ head(as_tibble(pride_sentences))
 
 pride_sentences <- unnest_sentences(pride, 
                                     input = text,
-                                    output = "sentence_text")
+                                    output = "sentence_text",
+                                    to_lower = F)
 
 head(pride_sentences)
 
@@ -150,6 +152,8 @@ corpus <- corpus_source %>%
   mutate(FileName = str_remove_all(FileName, "samples/")) %>% # let's remove the directory from the filename
   separate(FileName, into = c("author", "title", "year"), sep = "_", remove = T) %>% # and separate the metadata
   mutate(year = str_remove(str_trim(year, side = "both"), ".txt")) # and make sure there are no extra spaces before/after the words
+
+corpus$year <- as.numeric(corpus$year)
 
 # click on corpus and see how it looks. Neat, right?
 
