@@ -9,37 +9,21 @@
 
 # Everything else is R code. To execute the code, place the cursor on the corresponding line and press Ctrl+Enter (windows)
 
-# For today's practice, you will not need much knowledge of R: the scripts are provided for you. You will be guided through a simple case exploratory Sentiment Analysis, and then use those same scripts to experiment with data of your choice.
-# If you are unfamiliar with R language and basic operations and want to learn more, have a look at the resources at the end of this script.
-
-# before you start, check the working directory!
-# you can click on the Files panel, go to the practice_GG folder, and once you are inside click on the little arrow near the "More" button, and select "Set as working directory"
-
-
-# now we're ready to start!
-
-
-
-  
-# PS: Have you noticed that there is a little symbol on the top right of this panel, made of little horizontal lines? it is the document outline. if you write a comment and put a series of hashes after it, will become the header of a section, which you can then see in the outline for an easier navigation of the script. You can hide or visualise the outline by clicking on the button.
-
-
-
 
 ## load packages ----------
 
 # Ok, let's start! Before you begin you will need to load some packages. These allow you to execute specific operations.
 # If you have not done so already, you have to install them first: it might take a few minutes and you only have to do it once. If R asks you whether you want to install dependencies for the packages, say yes.
-
-install.packages("tidyverse")
-install.packages("readr")
-install.packages("data.table")
-install.packages("tm")
-install.packages("tidytext")
-install.packages("syuzhet")
-install.packages("sjPlot")
-install.packages("wordcloud")
-install.packages("textdata")
+# 
+# install.packages("tidyverse")
+# install.packages("readr")
+# install.packages("data.table")
+# install.packages("tm")
+# install.packages("tidytext")
+# install.packages("syuzhet")
+# install.packages("sjPlot")
+# install.packages("wordcloud")
+# install.packages("textdata")
 
 # Once you have installed the packeges you can comment the installation code like this:
 
@@ -57,6 +41,7 @@ library(tidytext)
 library(sjPlot)
 library(wordcloud)
 library(textdata)
+library(readtext)
 
 
 
@@ -82,102 +67,51 @@ fs = 12 # default plot font size
 
 # this tells R to look only for txt files in the working directory. (that's why we had to change it. we will set it back to the previous WD later)
 
-novels_files <- list.files(path = "corpus", pattern = "*.txt", full.names = T)
 
+corpus_source <- readtext("corpus/*.txt", encoding = "UTF-8") %>%
+  mutate(text = gsub("\\s+"," ", text))  %>%
+  as_tibble() %>%
+  mutate(doc_id = stringr::str_remove(doc_id, ".txt")) %>%
+  left_join(readtext("corpus/ELTeC-eng_metadata.tsv",
+                     docid_field = "filename") %>%
+              rename(author = `author.name`, # i want to rename wome variables
+                     author_gender = `author.gender`,
+                     year = `first.edition`) %>%
+              select(doc_id, # let's just preserve a few metadata infos
+                     author,
+                     title,
+                     author_gender,
+                     year,
+                     -text) %>%
+              as_tibble()
+  ) %>%
+  group_by(author_gender) %>%
+  sample_n(5) %>% # for this session, let's limit the corpus to 10 texts (5 for each gender)
+  ungroup() 
 
-
-# with the next chunk we make sure we keep the filename and use it as a variable, which then can be useful for preserving information we stored in the filename
-
-novels_source <- novels_files %>%  
-  set_names(.) %>% 
-  map_df(read_file) %>%
-  pivot_longer(cols = everything()) %>%
-  rename(FileName = 1,
-         text = 2)
-
-    
-# as mentioned above, we can then split the filename into the relevant "pieces" of information we want.
-# we tell R to split the filename into author, title and year, looking at "_" symbols as separator. we can achieve that with the "separate" function.
-# because the file extension is not separated from the rest of the filename with a "_" symbol, we need to tell R to remove the ".txt" part, and we can do so with "str_remove". We also make sure there are no white spaces on wither side of the year with "str_trim"
-
-novels_corpus <- novels_source %>%
-  mutate(FileName = str_remove_all(FileName, "corpus/")) %>%
-  separate(FileName, into = c("author", "title", "year"), sep = "_", remove = T) %>%
-  mutate(year = str_remove(str_trim(year, side = "both"), ".txt"))
-
-
-# we can remove the list of filenames and the source dataframe
-
-remove(novels_source, novels_files)
-
-# and we can now add an id per sentence and then tokenize
-
-novels_corpus <- novels_corpus %>%
-  group_by(title) %>%
-  mutate(sentence_id = seq_along(text)) %>%
-  ungroup() %>%
-  select(author,
-         title,
-         year,
-         sentence_id,
-         text) %>%
-  unnest_tokens(word, text, to_lower = T) # to_lower allow us to convert words to lower case
-
-# we can also create a word identification number per title per sentence, and a unique word id
-
-novels_corpus <- novels_corpus %>%
-  group_by(title, sentence_id) %>%
-  mutate(word_id = seq_along(word)) %>%
-  ungroup() %>%
-  mutate(unique_word_id = seq_along(word))
-  
 
 
 # let's have a look at out dataset now
 
-head(novels_corpus)
+head(corpus_source)
 
 
-
-# because in this case we do not have chapters data in our dataset, we can arbitrarily assign "fake chapters" to the novels, to see the evolution of sentiment throughout. (of course if you have that data already present in your dataset you do not need this)
-
-# for the sake of simplicity, let's split the novels into 15 chapters each.
-
-test <- novels_corpus %>%
+corpus_sentences <- corpus_source %>%
+  unnest_sentences(input = text, output = sentence, drop = T, to_lower = F) %>%
+  group_by(doc_id) %>%
+  mutate(sentence_id = seq_along(sentence)) %>%
   ungroup() %>%
-  group_split(title)
-
-test2 = list()
-
-for (i in 1:length(test)) {
-  avg_ch_lenght <- nrow(test[[i]])/15
-  r  <- rep(1:ceiling(nrow(test[[i]])/avg_ch_lenght),each=avg_ch_lenght)[1:nrow(test[[i]])]
-  test2[[i]] <- split(test[[i]],r)
-}
+  mutate(unique_setence_id = seq_along(sentence))
 
 
-for (i in 1:length(test2)) {
-  for (j in 1:length(test2[[i]])) {
-    test2[[i]][[j]]$chapter <- paste0(j)
-  }
-}
+corpus_tokens <- corpus_sentences %>%
+  unnest_tokens(input = sentence, output = token, drop = T, to_lower = F) %>%
+  group_by(doc_id, sentence_id) %>%
+  mutate(token_id = seq_along(token)) %>%
+  ungroup() %>%
+  mutate(unique_token_id = seq_along(token))
 
-test = list()
-
-for (i in 1:length(test2)) {
-  test[[i]] <- data.table::rbindlist(test2[[i]])
-}
-
-novels_corpus <- data.table(rbindlist(test))
-
-
-remove(test, test2, j,i,r,avg_ch_lenght)
-
-
-
-# let's have a look again
-
-head(novels_corpus)
+head(corpus_tokens)
 
 
 
@@ -186,59 +120,59 @@ head(novels_corpus)
 
 # now we can have a first look at our corpus and see which words are most frequent in the novels
 
-novels_corpus %>%
-  group_by(title, word) %>%
-  anti_join(stop_words, by = "word") %>% # delete stopwords
+corpus_tokens %>%
+  group_by(title, token) %>%
+  anti_join(as_tibble(stopwords("en")), by = c("token"="value")) %>% # delete stopwords
   count() %>% # summarize count per word per title
   arrange(desc(n)) %>% # highest freq on top
   group_by(title) %>% # 
-  mutate(top = seq_along(word)) %>% # identify rank within group
+  mutate(top = seq_along(token)) %>% # identify rank within group
   filter(top <= 15) %>% # retain top 15 frequent words
   # create barplot
   ggplot(aes(x = -top, fill = title)) + 
   geom_bar(aes(y = n), stat = 'identity', col = 'black') +
   # make sure words are printed either in or next to bar
   geom_text(aes(y = ifelse(n > max(n) / 2, max(n) / 50, n + max(n) / 50),
-                label = word), size = fs/3, hjust = "left") +
+                label = token), size = fs/3, hjust = "left") +
   theme(legend.position = 'none', # get rid of legend
         text = element_text(size = fs), # determine fs
         axis.text.x = element_text(angle = 45, hjust = 1, size = fs/1.5), # rotate x text
         axis.ticks.y = element_blank(), # remove y ticks
         axis.text.y = element_blank()) + # remove y text
   labs(y = "Word count", x = "", # add labels
-       title = "Austen: Most frequent words throughout the novels") +
+       title = "Most frequent words throughout the novels") +
   facet_grid(. ~ title) + # separate plot for each title
   coord_flip() + # flip axes
   scale_fill_sjplot()
 
-# relatively unsurprisingly, names of characters are generally the most frequent words. To see what other words are highly frequent, we can for example import a list of first and last names, so that we can exclude them from the plot.
+# relatively unsurprisingly, names of characters are generally the most frequent tokens. To see what other tokens are highly frequent, we can for example import a list of first and last names, so that we can exclude them from the plot.
 
 
-first_names <- read_table("first_names.txt") 
-first_names$word = tolower(first_names$word)
+first_names <- read_table("scripts/first_names.txt") %>%
+  rename(token = word)
 
-last_names <- read_table("last_names.txt") 
-last_names$word = tolower(last_names$word)
+last_names <- read_table("scripts/last_names.txt")  %>%
+  rename(token = word)
 
 
 # let's see then how it looks without those
 
-novels_corpus %>%
+corpus_tokens %>%
   anti_join(first_names) %>%
   anti_join(last_names) %>%
-  group_by(title, word) %>%
-  anti_join(stop_words, by = "word") %>% # delete stopwords
+  group_by(title, token) %>%
+  anti_join(as_tibble(stopwords()), by = c("token"="value")) %>% # delete stopwords
   count() %>% # summarize count per word per title
   arrange(desc(n)) %>% # highest freq on top
   group_by(title) %>% # 
-  mutate(top = seq_along(word)) %>% # identify rank within group
+  mutate(top = seq_along(token)) %>% # identify rank within group
   filter(top <= 15) %>% # retain top 15 frequent words
   # create barplot
   ggplot(aes(x = -top, fill = title)) + 
   geom_bar(aes(y = n), stat = 'identity', col = 'black') +
   # make sure words are printed either in or next to bar
   geom_text(aes(y = ifelse(n > max(n) / 2, max(n) / 50, n + max(n) / 50),
-                label = word), size = fs/3, hjust = "left") +
+                label = token), size = fs/3, hjust = "left") +
   theme(legend.position = 'none', # get rid of legend
         text = element_text(size = fs), # determine fs
         axis.text.x = element_text(angle = 45, hjust = 1, size = fs/1.5), # rotate x text
